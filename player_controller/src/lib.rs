@@ -1,3 +1,4 @@
+use std::time::*;
 use voxel_engine::*;
 use voxel_engine::input::*;
 use voxel_engine::math::*;
@@ -8,28 +9,130 @@ use wings::*;
 
 instantiate_systems!(Client, [PlayerController]);
 
+/*
+
+            let selected_item = match inv_state.selected_item % 8 {
+                0 => "Red light",
+                1 => "Green light",
+                2 => "Blue light",
+                3 => "White light",
+                4 => "Red plastic",
+                5 => "Green plastic",
+                6 => "Blue plastic",
+                7 => "White plastic",
+                _ => unreachable!()
+            };
+            
+            ui.label(format!("Placing: {selected_item}"));
+            ui.label("Press f to swap material");
+            ui.label("Press g to spawn object");
+ */
+
 /// Implements a basic first-person character controller for movement.
 #[export_system]
 pub struct PlayerController {
     /// The context handle.
     ctx: WingsContextHandle<Self>,
+    /// Holds data about an object currently being dragged.
+    dragged_object: Option<DraggedObject>,
+    /// The kind of physics object to spawn next.
+    object_kind: u32,
+    /// The item that the user has currently selected.
+    selected_item: u32,
     /// Holds handles for accessing user input.
     user_actions: UserActions,
+    /// The time at which the user may next place or destroy voxels.
+    wait_for_placement_until: Duration,
+    /// Whether the user was placing or deleting voxels.
+    was_placing: bool
 }
 
 impl PlayerController {
-    fn print_hit_object(&mut self, transform: Transform) {
+    /// Handles interaction and dragging with physics objects.
+    fn handle_object_interaction(&mut self, pointer_ray: &Ray, hit_result: Option<&RaycastHit>) {
         let input = self.ctx.get::<dyn Input>();
-        if let Some(direction) = input.pointer_direction() {
-            let raycaster = self.ctx.get::<dyn Raycaster>();
-            if let Some(hit) = raycaster.cast(&Ray { direction, position: transform.position, max_distance: f32::MAX }) {
-                println!("HIT {hit:?}");
+        let player = self.ctx.get::<dyn Player>();
+        let drag_physics_entity = input.get(self.user_actions.drag_physics_entity);
+        let spawn_physics_entity = input.get(self.user_actions.spawn_physics_entity);
+        
+        if spawn_physics_entity.pressed {
+            let distance = hit_result.map(|x| x.distance).unwrap_or(f32::MAX);
+            let position = pointer_ray.position + ((distance - 30.0).max(0.0).min(50.0) * pointer_ray.direction).into();
+            self.object_kind = self.object_kind.wrapping_add(1);
+            player.spawn_physics_object(position, self.object_kind);
+        }
+
+        if !drag_physics_entity.held && self.dragged_object.is_some() {
+            player.drag_physics_object(None);
+            self.dragged_object = None;
+        }
+        else if drag_physics_entity.pressed && self.dragged_object.is_none() {
+            if let Some(hit) = hit_result {
+                if let RaycastObject::Entity { id } = hit.object {
+                    let contact_point = hit.voxel.as_vec3a() + Vec3A::splat(0.5);
+                    self.dragged_object = Some(DraggedObject { contact_point, id, distance: hit.distance });
+                }
             }
+        }
+
+        if let Some(dragged) = self.dragged_object {
+            let target_position = pointer_ray.position + (dragged.distance * pointer_ray.direction).into();
+            player.drag_physics_object(Some(DragEntity { contact_point: dragged.contact_point, id: dragged.id, target_position }));
         }
     }
 
-    /// Moves the player according to user inputs.
-    fn move_player(&mut self, _: &voxel_engine::timing::on::Frame) {
+    /// Places or destroys voxels according to the player's input.
+    fn handle_player_place_destroy(&mut self, hit_result: Option<&RaycastHit>) {
+        let input = self.ctx.get::<dyn Input>();
+        let delete_voxels = input.get(self.user_actions.delete_voxels);
+        let place_voxels = input.get(self.user_actions.place_voxels);
+        let now = self.ctx.get::<dyn FrameTiming>().last_frame();        
+
+        if let Some(hit) = hit_result {
+            if hit.object == (RaycastObject::World { }) && self.wait_for_placement_until <= now { //self.dragged_object.is_none() && 
+                let delete = if delete_voxels.pressed {
+                    self.wait_for_placement_until = now + Duration::from_secs_f32(0.25);
+                    self.was_placing = true;
+                    true
+                }
+                else if self.was_placing && delete_voxels.held {
+                    self.wait_for_placement_until = now + Duration::from_secs_f32(0.05);
+                    true
+                }
+                else {
+                    false
+                };
+    
+                if delete {
+                    self.ctx.get::<dyn Player>().delete_voxels_at(hit.voxel);
+                }
+                else {
+                    let place = if place_voxels.pressed {
+                        self.wait_for_placement_until = now + Duration::from_secs_f32(0.25);
+                        self.was_placing = true;
+                        true
+                    }
+                    else if self.was_placing && place_voxels.held {
+                        self.wait_for_placement_until = now + Duration::from_secs_f32(0.05);
+                        true
+                    }
+                    else {
+                        false
+                    };
+    
+                    if place {
+                        self.ctx.get::<dyn Player>().place_voxels_at(hit.voxel, self.selected_item);
+                    }
+                }
+            }
+        }
+
+        self.was_placing &= delete_voxels.held || place_voxels.held;
+    }
+
+    /// Updates the player's position based upon user input.
+    /// Returns the player's new transform.
+    fn move_player(&mut self) -> Transform {
         let delta_time = self.ctx.get::<dyn FrameTiming>().frame_duration().as_secs_f32();
         let mut input = self.ctx.get_mut::<dyn Input>();
         let pointer_delta = input.pointer_delta();
@@ -51,17 +154,81 @@ impl PlayerController {
 
         Self::update_player_look_direction(&mut transform, pointer_delta, delta_time * vec2(look_horizontal, look_vertical));
 
-        let net_vertical_motion = if jump.held { 1.0 } else { 0.0 } + if sneak.held { -1.0 } else { 0.0 };
+        let net_vertical_motion = [0.0, 1.0][jump.held as usize] + [0.0, -1.0][sneak.held as usize];
         Self::update_player_position(&mut transform, delta_time, vec3a(move_sideways, net_vertical_motion, move_forward));
         
         player.set_transform(transform);
         drop(player);
-        self.print_hit_object(transform);
+        
+        transform
+    }
+
+    /// Updates the item that the user currently has selected.
+    fn update_selected_item(&mut self) {
+        let input = self.ctx.get::<dyn Input>();
+        let scroll_delta = input.scroll_delta();
+        let toggle_item_left = input.get(self.user_actions.toggle_item_left);
+        let toggle_item_right = input.get(self.user_actions.toggle_item_right);
+
+        let net_toggle_item = scroll_delta.y + [0, -1][toggle_item_left.pressed as usize] + [0, 1][toggle_item_right.pressed as usize];
+        self.selected_item = self.selected_item.wrapping_add(net_toggle_item as u32);
+    }
+
+    /// Moves the player according to user inputs.
+    fn handle_player_input(&mut self, _: &voxel_engine::timing::on::Frame) {
+        /// The maximum distance away that the user may select something.
+        const MAX_PLACEMENT_DISTANCE: f32 = 256.0;
+
+        self.update_selected_item();
+        let maybe_pointer_direction = self.ctx.get::<dyn Input>().pointer_direction();
+        let transform = self.move_player();
+        
+        if let Some(direction) = maybe_pointer_direction {
+            let pointer_ray = Ray {
+                position: transform.position,
+                direction,
+                max_distance: MAX_PLACEMENT_DISTANCE
+            };
+
+            let hit_result = self.ctx.get::<dyn Raycaster>().cast(&pointer_ray);
+            self.handle_object_interaction(&pointer_ray, hit_result.as_ref());
+            self.handle_player_place_destroy(hit_result.as_ref());
+        }
     }
 
     /// Registers the set of actions relevant to player movement.
     fn get_user_actions(ctx: &mut WingsContextHandle<Self>) -> UserActions {
         let mut input = ctx.get_mut::<dyn Input>();
+
+        let delete_voxels = input.define(ActionDescriptor::new(
+            ActionName::new::<Self>("Delete"),
+            "Deletes voxels where the player's pointer is.",
+            &[
+                DigitalBinding {
+                    threshold: 0.9,
+                    raw_input: RawInput::GamepadButton(GamepadButton::LeftTrigger)
+                },
+                DigitalBinding {
+                    threshold: 0.9,
+                    raw_input: RawInput::MouseButton(MouseButton::Left)
+                },
+            ]
+        ));
+
+        let drag_physics_entity = input.define(ActionDescriptor::new(
+            ActionName::new::<Self>("Drag entity"),
+            "Drags a physics entity around the scene.",
+            &[
+                DigitalBinding {
+                    threshold: 0.9,
+                    raw_input: RawInput::GamepadButton(GamepadButton::RightTrigger)
+                },
+                DigitalBinding {
+                    threshold: 0.9,
+                    raw_input: RawInput::MouseButton(MouseButton::Right)
+                },
+            ]
+        ));
 
         let look_vertical = input.define(ActionDescriptor::new(
             ActionName::new::<Self>("Look vertical"),
@@ -138,6 +305,21 @@ impl PlayerController {
             ]
         ));
 
+        let place_voxels = input.define(ActionDescriptor::new(
+            ActionName::new::<Self>("Place"),
+            "Places voxels where the player's pointer is.",
+            &[
+                DigitalBinding {
+                    threshold: 0.9,
+                    raw_input: RawInput::GamepadButton(GamepadButton::RightTrigger)
+                },
+                DigitalBinding {
+                    threshold: 0.9,
+                    raw_input: RawInput::MouseButton(MouseButton::Right)
+                },
+            ]
+        ));
+
         let sneak = input.define(ActionDescriptor::new(
             ActionName::new::<Self>("Sneak"),
             "Causes the player to sneak or move downward.",
@@ -149,6 +331,43 @@ impl PlayerController {
                 DigitalBinding {
                     threshold: 0.9,
                     raw_input: RawInput::Key(Key::LShift)
+                },
+            ]
+        ));
+
+        let spawn_physics_entity = input.define(ActionDescriptor::new(
+            ActionName::new::<Self>("Spawn debug entity"),
+            "Spawns a physics entity for debugging.",
+            &[
+                DigitalBinding {
+                    threshold: 0.9,
+                    raw_input: RawInput::GamepadButton(GamepadButton::North)
+                },
+                DigitalBinding {
+                    threshold: 0.9,
+                    raw_input: RawInput::Key(Key::F)
+                },
+            ]
+        ));
+
+        let toggle_item_left = input.define(ActionDescriptor::new(
+            ActionName::new::<Self>("Toggle item (left)"),
+            "Toggles the selected item to the left.",
+            &[
+                DigitalBinding {
+                    threshold: 0.9,
+                    raw_input: RawInput::GamepadButton(GamepadButton::DPadLeft)
+                },
+            ]
+        ));
+
+        let toggle_item_right = input.define(ActionDescriptor::new(
+            ActionName::new::<Self>("Toggle item (right)"),
+            "Toggles the selected item to the right.",
+            &[
+                DigitalBinding {
+                    threshold: 0.9,
+                    raw_input: RawInput::GamepadButton(GamepadButton::DPadRight)
                 },
             ]
         ));
@@ -165,12 +384,18 @@ impl PlayerController {
         ));
         
         UserActions {
+            drag_physics_entity,
+            delete_voxels,
             look_horizontal,
             look_vertical,
             jump,
             move_forward,
             move_sideways,
+            place_voxels,
             sneak,
+            spawn_physics_entity,
+            toggle_item_left,
+            toggle_item_right,
             toggle_pointer_lock
         }
     }
@@ -215,20 +440,46 @@ impl WingsSystem for PlayerController {
         .with::<dyn Raycaster>();
 
     const EVENT_HANDLERS: EventHandlers<Self> = event_handlers()
-        .with(Self::move_player);
+        .with(Self::handle_player_input);
 
     fn new(mut ctx: WingsContextHandle<Self>) -> Self {
+        let dragged_object = None;
+        let object_kind = 0;
+        let selected_item = 0;
+        let wait_for_placement_until = Duration::ZERO;
+        let was_placing = false;
         let user_actions = Self::get_user_actions(&mut ctx);
+
         Self {
             ctx,
-            user_actions
+            dragged_object,
+            object_kind,
+            selected_item,
+            user_actions,
+            wait_for_placement_until,
+            was_placing
         }
     }
+}
+
+/// Stores information about an object being dragged.
+#[derive(Copy, Clone, Debug)]
+struct DraggedObject {
+    /// The body-local point at which the object was grabbed.
+    pub contact_point: Vec3A,
+    /// The ID of the entity being dragged.
+    pub id: u64,
+    /// The distance that the entity is held away from the player.
+    pub distance: f32
 }
 
 /// Holds the set of actions relevant to user input.
 #[derive(Copy, Clone, Debug)]
 struct UserActions {
+    /// Deletes voxels where the player's pointer is.
+    pub delete_voxels: ActionId<Digital>,
+    /// Drags a physics entity around the screen.
+    pub drag_physics_entity: ActionId<Digital>,
     /// Causes the player to look left or right.
     pub look_horizontal: ActionId<Analog>,
     /// Causes the player to look up or down.
@@ -239,8 +490,16 @@ struct UserActions {
     pub move_forward: ActionId<Analog>,
     /// Causes the player to walk left or right.
     pub move_sideways: ActionId<Analog>,
+    /// Places voxels where the player's pointer is.
+    pub place_voxels: ActionId<Digital>,
     /// Causes the player to move downward.
     pub sneak: ActionId<Digital>,
+    /// Spawns a physics entity for debugging.
+    pub spawn_physics_entity: ActionId<Digital>,
+    /// Toggles the selected item to the left.
+    pub toggle_item_left: ActionId<Digital>,
+    /// Toggles the selected item to the right.
+    pub toggle_item_right: ActionId<Digital>,
     /// Toggles whether the mouse should be locked to the center of the screen.
     pub toggle_pointer_lock: ActionId<Digital>
 }
