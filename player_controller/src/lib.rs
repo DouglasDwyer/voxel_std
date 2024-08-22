@@ -1,6 +1,7 @@
 use voxel_engine::*;
 use voxel_engine::input::*;
 use voxel_engine::math::*;
+use voxel_engine::physics::*;
 use voxel_engine::player::*;
 use voxel_engine::timing::*;
 use wings::*;
@@ -17,11 +18,21 @@ pub struct PlayerController {
 }
 
 impl PlayerController {
+    fn print_hit_object(&mut self, transform: Transform) {
+        let input = self.ctx.get::<dyn Input>();
+        if let Some(direction) = input.pointer_direction() {
+            let raycaster = self.ctx.get::<dyn Raycaster>();
+            if let Some(hit) = raycaster.cast(&Ray { direction, position: transform.position, max_distance: f32::MAX }) {
+                println!("HIT {hit:?}");
+            }
+        }
+    }
+
     /// Moves the player according to user inputs.
     fn move_player(&mut self, _: &voxel_engine::timing::on::Frame) {
         let delta_time = self.ctx.get::<dyn FrameTiming>().frame_duration().as_secs_f32();
         let mut input = self.ctx.get_mut::<dyn Input>();
-        let pointer_delta = input.get_pointer_delta();
+        let pointer_delta = input.pointer_delta();
         let look_vertical = input.get(self.user_actions.look_vertical);
         let look_horizontal = input.get(self.user_actions.look_horizontal);
         let jump = input.get(self.user_actions.jump);
@@ -30,7 +41,7 @@ impl PlayerController {
         let sneak = input.get(self.user_actions.sneak);
         let toggle_pointer_lock = input.get(self.user_actions.toggle_pointer_lock);
 
-        let lock_pointer = input.get_pointer_locked() && input.is_focused();
+        let lock_pointer = input.pointer_locked() && input.focused();
         input.set_pointer_locked(lock_pointer ^ toggle_pointer_lock.pressed);
         
         drop(input);
@@ -44,6 +55,8 @@ impl PlayerController {
         Self::update_player_position(&mut transform, delta_time, vec3a(move_sideways, net_vertical_motion, move_forward));
         
         player.set_transform(transform);
+        drop(player);
+        self.print_hit_object(transform);
     }
 
     /// Registers the set of actions relevant to player movement.
@@ -198,7 +211,8 @@ impl WingsSystem for PlayerController {
     const DEPENDENCIES: Dependencies = dependencies()
         .with::<dyn FrameTiming>()
         .with::<dyn Input>()
-        .with::<dyn Player>();
+        .with::<dyn Player>()
+        .with::<dyn Raycaster>();
 
     const EVENT_HANDLERS: EventHandlers<Self> = event_handlers()
         .with(Self::move_player);
