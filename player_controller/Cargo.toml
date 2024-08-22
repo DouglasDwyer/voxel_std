@@ -1,0 +1,11 @@
+[package]
+name = "player_controller"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = [ "cdylib" ]
+
+[dependencies]
+voxel_engine.workspace = true
+wings.workspace = true

@@ -1,0 +1,17 @@
+[workspace]
+members = [
+    "player_controller"
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+
+[workspace.dependencies]
+# Internal dependencies
+player_controller = { path = "player_controller" }
+
+# External dependencies
+voxel_engine = { path = "../voxel_engine", default-features = false }
+wings = { version = "0.1.5", default-features = false }
