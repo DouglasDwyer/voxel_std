@@ -182,7 +182,7 @@ impl PlayerController {
         let toggle_item_right = input.get(self.user_actions.toggle_item_right);
 
         let net_toggle_item = scroll_delta.y + [0, -1][toggle_item_left.pressed as usize] + [0, 1][toggle_item_right.pressed as usize];
-        self.selected_item = self.selected_item.wrapping_add(net_toggle_item as u32);
+        self.selected_item = self.selected_item.wrapping_sub(net_toggle_item as u32);
     }
 
     /// Moves the player according to user inputs.
