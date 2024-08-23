@@ -13,5 +13,5 @@ edition = "2021"
 player_controller = { path = "player_controller" }
 
 # External dependencies
-voxel_engine = { path = "../voxel_engine", default-features = false }
+voxel_engine = { path = "../voxel_engine", default-features = false, features = [ "egui" ] }
 wings = { version = "0.1.5", default-features = false }

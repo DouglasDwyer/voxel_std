@@ -9,25 +9,6 @@ use wings::*;
 
 instantiate_systems!(Client, [PlayerController]);
 
-/*
-
-            let selected_item = match inv_state.selected_item % 8 {
-                0 => "Red light",
-                1 => "Green light",
-                2 => "Blue light",
-                3 => "White light",
-                4 => "Red plastic",
-                5 => "Green plastic",
-                6 => "Blue plastic",
-                7 => "White plastic",
-                _ => unreachable!()
-            };
-            
-            ui.label(format!("Placing: {selected_item}"));
-            ui.label("Press f to swap material");
-            ui.label("Press g to spawn object");
- */
-
 /// Implements a basic first-person character controller for movement.
 #[export_system]
 pub struct PlayerController {
@@ -48,6 +29,31 @@ pub struct PlayerController {
 }
 
 impl PlayerController {
+    /// Draws a crosshair and text related to the character controls.
+    fn draw_controls_gui(&mut self, pointer_locked: bool) {
+        let egui_system = self.ctx.get::<dyn egui::Egui>();
+        let egui_ctx = egui_system.context();
+
+        let mut painter = egui_ctx.layer_painter(egui::LayerId::background());
+        if pointer_locked {
+            Self::draw_crosshairs(&mut painter);
+        }
+
+        let selected_item = match self.selected_item % 8 {
+            0 => "Red light",
+            1 => "Green light",
+            2 => "Blue light",
+            3 => "White light",
+            4 => "Red plastic",
+            5 => "Green plastic",
+            6 => "Blue plastic",
+            7 => "White plastic",
+            _ => unreachable!()
+        };
+
+        Self::draw_item_text(&mut painter, selected_item);
+    }
+
     /// Handles interaction and dragging with physics objects.
     fn handle_object_interaction(&mut self, pointer_ray: &Ray, hit_result: Option<&RaycastHit>) {
         let input = self.ctx.get::<dyn Input>();
@@ -144,8 +150,13 @@ impl PlayerController {
         let sneak = input.get(self.user_actions.sneak);
         let toggle_pointer_lock = input.get(self.user_actions.toggle_pointer_lock);
 
-        let lock_pointer = input.pointer_locked() && input.focused();
-        input.set_pointer_locked(lock_pointer ^ toggle_pointer_lock.pressed);
+        if input.focused() {
+            let lock_pointer = (input.pointer_locked() ^ toggle_pointer_lock.pressed) || (0.0 < look_vertical.abs().max(look_horizontal.abs()));
+            input.set_pointer_locked(lock_pointer);
+        }
+        else {
+            input.set_pointer_locked(false);
+        }
         
         drop(input);
 
@@ -194,6 +205,29 @@ impl PlayerController {
             self.handle_object_interaction(&pointer_ray, hit_result.as_ref());
             self.handle_player_place_destroy(hit_result.as_ref());
         }
+
+        let pointer_locked = self.ctx.get::<dyn Input>().pointer_locked();
+        self.draw_controls_gui(pointer_locked);
+    }
+
+    /// Draws crosshairs on the center of the screen to help the player aim.
+    fn draw_crosshairs(painter: &mut egui::Painter) {
+        let center = painter.clip_rect().center();
+        painter.rect_filled(egui::Rect::from_center_size(center, egui::vec2(14.0, 7.0)), 2.0, egui::Color32::BLACK);
+        painter.rect_filled(egui::Rect::from_center_size(center, egui::vec2(7.0, 14.0)), 2.0, egui::Color32::BLACK);
+        painter.rect_filled(egui::Rect::from_center_size(center, egui::vec2(10.0, 3.0)), 2.0, egui::Color32::WHITE);
+        painter.rect_filled(egui::Rect::from_center_size(center, egui::vec2(3.0, 10.0)), 2.0, egui::Color32::WHITE);
+    }
+
+    /// Draws the provided text as a tooltip near the screen bottom.
+    fn draw_item_text(painter: &mut egui::Painter, text: &str) {
+        let center = painter.clip_rect().center();
+        let bottom = painter.clip_rect().bottom();
+        let text_position = egui::pos2(center.x, bottom - 50.0);
+
+        let rect_shape = painter.add(egui::Shape::Noop);
+        let text_rect = painter.text(text_position, egui::Align2::CENTER_CENTER, text, egui::FontId::default(), egui::Color32::WHITE);
+        painter.set(rect_shape, egui::Shape::rect_filled(text_rect.expand(5.0), 3.0, egui::Color32::from_black_alpha(64)));
     }
 
     /// Registers the set of actions relevant to player movement.
@@ -434,6 +468,7 @@ impl PlayerController {
 
 impl WingsSystem for PlayerController {
     const DEPENDENCIES: Dependencies = dependencies()
+        .with::<dyn egui::Egui>()
         .with::<dyn FrameTiming>()
         .with::<dyn Input>()
         .with::<dyn Player>()
