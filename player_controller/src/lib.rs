@@ -150,13 +150,8 @@ impl PlayerController {
         let sneak = input.get(self.user_actions.sneak);
         let toggle_pointer_lock = input.get(self.user_actions.toggle_pointer_lock);
 
-        if input.focused() {
-            let lock_pointer = (input.pointer_locked() ^ toggle_pointer_lock.pressed) || (0.0 < look_vertical.abs().max(look_horizontal.abs()));
-            input.set_pointer_locked(lock_pointer);
-        }
-        else {
-            input.set_pointer_locked(false);
-        }
+        let lock_pointer = (input.pointer_locked() ^ toggle_pointer_lock.pressed) || (0.0 < look_vertical.abs().max(look_horizontal.abs()));
+        input.set_pointer_locked(lock_pointer);
         
         drop(input);
 
@@ -413,7 +408,7 @@ impl PlayerController {
                 DigitalBinding {
                     threshold: 0.9,
                     raw_input: RawInput::Key(Key::T)
-                },
+                }
             ]
         ));
         
