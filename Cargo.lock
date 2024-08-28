@@ -549,6 +549,8 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 [[package]]
 name = "voxel_engine"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c413165b966a43836092fd6391ec2dfea80636b616fec910404b881019e0cca0"
 dependencies = [
  "egui_wings",
  "voxel_engine_macros",
@@ -558,6 +560,8 @@ dependencies = [
 [[package]]
 name = "voxel_engine_macros"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac0181d820dd7d18b4c64f5967732c61d65523804539d995d50282efb372bf01"
 dependencies = [
  "quote",
  "toml",
@@ -568,6 +572,8 @@ dependencies = [
 [[package]]
 name = "voxel_engine_types"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a1efc6eca7b87b5c49d71562690572cabdf902b7a5f2731baaf5e287cd522a4"
 dependencies = [
  "bytemuck",
  "egui_wings",
@@ -576,6 +582,10 @@ dependencies = [
  "wasset",
  "wings",
 ]
+
+[[package]]
+name = "voxel_std"
+version = "0.1.0"
 
 [[package]]
 name = "wasi"

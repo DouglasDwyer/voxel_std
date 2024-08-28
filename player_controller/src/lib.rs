@@ -208,10 +208,10 @@ impl PlayerController {
     /// Draws crosshairs on the center of the screen to help the player aim.
     fn draw_crosshairs(painter: &mut egui::Painter) {
         let center = painter.clip_rect().center();
-        painter.rect_filled(egui::Rect::from_center_size(center, egui::vec2(14.0, 7.0)), 2.0, egui::Color32::BLACK);
-        painter.rect_filled(egui::Rect::from_center_size(center, egui::vec2(7.0, 14.0)), 2.0, egui::Color32::BLACK);
-        painter.rect_filled(egui::Rect::from_center_size(center, egui::vec2(10.0, 3.0)), 2.0, egui::Color32::WHITE);
-        painter.rect_filled(egui::Rect::from_center_size(center, egui::vec2(3.0, 10.0)), 2.0, egui::Color32::WHITE);
+        painter.rect_filled(egui::Rect::from_center_size(center, egui::vec2(14.0, 6.0)), 3.0, egui::Color32::BLACK);
+        painter.rect_filled(egui::Rect::from_center_size(center, egui::vec2(6.0, 14.0)), 3.0, egui::Color32::BLACK);
+        painter.rect_filled(egui::Rect::from_center_size(center, egui::vec2(10.0, 2.0)), 2.0, egui::Color32::WHITE);
+        painter.rect_filled(egui::Rect::from_center_size(center, egui::vec2(2.0, 10.0)), 2.0, egui::Color32::WHITE);
     }
 
     /// Draws the provided text as a tooltip near the screen bottom.
@@ -374,7 +374,7 @@ impl PlayerController {
                 },
                 DigitalBinding {
                     threshold: 0.9,
-                    raw_input: RawInput::Key(Key::F)
+                    raw_input: RawInput::Key(Key::G)
                 },
             ]
         ));
@@ -394,6 +394,10 @@ impl PlayerController {
             ActionName::new::<Self>("Toggle item (right)"),
             "Toggles the selected item to the right.",
             &[
+                DigitalBinding {
+                    threshold: 0.9,
+                    raw_input: RawInput::Key(Key::F)
+                },
                 DigitalBinding {
                     threshold: 0.9,
                     raw_input: RawInput::GamepadButton(GamepadButton::DPadRight)
@@ -479,7 +483,7 @@ impl WingsSystem for PlayerController {
         let wait_for_placement_until = Duration::ZERO;
         let was_placing = false;
         let user_actions = Self::get_user_actions(&mut ctx);
-
+        
         Self {
             ctx,
             dragged_object,

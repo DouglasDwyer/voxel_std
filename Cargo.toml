@@ -7,11 +7,24 @@ resolver = "2"
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
+description = "Standard plugins for the Octo voxel game engine"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/DouglasDwyer/voxel_engine"
 
 [workspace.dependencies]
 # Internal dependencies
 player_controller = { path = "player_controller" }
 
 # External dependencies
-voxel_engine = { path = "../voxel_engine", default-features = false, features = [ "egui" ] }
+voxel_engine = { version = "0.1.0", default-features = false, features = [ "egui" ] }
 wings = { version = "0.1.5", default-features = false }
+
+[package]
+name = "voxel_std"
+edition.workspace = true
+version.workspace = true
+description.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
