@@ -4,7 +4,7 @@ use std::path::*;
 use std::process::*;
 
 /// Recursively invokes `cargo` to build the given mod.
-fn build_mod(name: &str, out_path: &Path, output: &mut String) {
+fn build_mod(name: &str, out_path: &Path, binary_output: &mut String, list_output: &mut String) {
     println!("cargo:rerun-if-changed={name}");
 
     let result = Command::new("cargo")
@@ -27,12 +27,15 @@ fn build_mod(name: &str, out_path: &Path, output: &mut String) {
         path_buf.push(format!("wasm32-wasip1/release/{name}.wasm"));
         assert!(path_buf.exists(), "Mod not found at path: {path_buf:?}");
 
+        let literal_name = name.to_uppercase();
         let wasm = read(&path_buf).expect("Could not read WASM output.");
-        let _ = std::fmt::Write::write_fmt(output, format_args!(
+        let _ = std::fmt::Write::write_fmt(binary_output, format_args!(
             "/// The WASM binary for the `{name}` mod.\n\
-            pub const {}: &[u8] = b\"{};\";",
-            name.to_uppercase(),
+            pub const {literal_name}: &[u8] = b\"{};\";",
             to_byte_string_literal(&wasm)
+        ));
+        let _ = std::fmt::Write::write_fmt(list_output, format_args!(
+            "StandardMod {{ name: \"{name}\", module: {literal_name} }},"
         ));
     }
     else {
@@ -55,18 +58,21 @@ fn to_byte_string_literal(bytes: &[u8]) -> String {
 
 /// Builds all WASM plugins and embeds them for consumption as byte arrays.
 fn main() {
-    let mut result = String::default();
+    let mut binary_output = String::default();
+    let mut list_output = String::default();
     
     let out_dir = var("OUT_DIR").expect("Could not get output directory.");
     let out_path = Path::new(&out_dir);
 
     for mod_name in ["player_controller"] {
-        build_mod(mod_name, out_path, &mut result);
+        build_mod(mod_name, out_path, &mut binary_output, &mut list_output);
     }
 
     write(
         out_path.join("standard_plugins.rs"),
-        result,
+        format!("{binary_output}\
+        /// Holds a list containing all standard mods.\n\
+        pub const STANDARD_MODS: &[StandardMod] = &[{list_output}];"),
     )
     .expect("Could not write WASM mod Rust file.");
 }
