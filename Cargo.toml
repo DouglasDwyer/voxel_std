@@ -28,3 +28,7 @@ description.workspace = true
 license.workspace = true
 readme.workspace = true
 repository.workspace = true
+
+[[bin]]
+name = "build_mods"
+path = "src/bin.rs"
