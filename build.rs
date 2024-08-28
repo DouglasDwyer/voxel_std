@@ -31,9 +31,10 @@ fn build_mod(name: &str, out_path: &Path, binary_output: &mut String, list_outpu
         let wasm = read(&path_buf).expect("Could not read WASM output.");
         let _ = std::fmt::Write::write_fmt(binary_output, format_args!(
             "/// The WASM binary for the `{name}` mod.\n\
-            pub const {literal_name}: &[u8] = b\"{};\";",
+            pub const {literal_name}: &[u8] = b\"{}\";",
             to_byte_string_literal(&wasm)
         ));
+        
         let _ = std::fmt::Write::write_fmt(list_output, format_args!(
             "StandardMod {{ name: \"{name}\", module: {literal_name} }},"
         ));
